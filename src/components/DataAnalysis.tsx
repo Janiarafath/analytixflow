@@ -24,7 +24,7 @@ import { Line, Bar, Pie } from 'react-chartjs-2';
 import { useAuth } from '../contexts/AuthContext';
 
 // Initialize Gemini AI with the provided API key
-const genAI = new GoogleGenerativeAI('AIzaSyDJOG2ikfCpJY5RbKI-QvtQLIOhcxJBhBY');
+const genAI = new GoogleGenerativeAI('AIzaSyCPgkP-bXx0o2HBt-VxqCDtfuRlFKDlYy8');
 
 ChartJS.register(
   CategoryScale,
