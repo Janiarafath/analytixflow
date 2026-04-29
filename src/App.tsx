@@ -8,6 +8,12 @@ import { Homepage } from './components/Homepage';
 import { Auth } from './components/Auth';
 import { AdminDashboard } from './components/AdminDashboard';
 import { UpgradePage } from './components/UpgradePage';
+import { TrueRealTimeDashboard } from './components/TrueRealTimeDashboard';
+import { RealAnomalyDetection } from './components/RealAnomalyDetection';
+import { UniversalWebScraper } from './components/UniversalWebScraper';
+import { CustomerBehaviorAnalytics } from './components/CustomerBehaviorAnalytics';
+import { CustomDataStream } from './components/CustomDataStream';
+import { Advanced3DVisualization } from './components/Advanced3DVisualization';
 import { useAuth } from './contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { initEmailJS } from './lib/emailjs';
@@ -79,6 +85,18 @@ function AuthenticatedApp() {
           <AdminDashboard />
         ) : path === '/analysis' ? (
           <DataAnalysis />
+        ) : path === '/realtime' ? (
+          <TrueRealTimeDashboard />
+        ) : path === '/anomaly' ? (
+          <RealAnomalyDetection />
+        ) : path === '/scraper' ? (
+          <UniversalWebScraper />
+        ) : path === '/customers' ? (
+          <CustomerBehaviorAnalytics />
+        ) : path === '/streams' ? (
+          <CustomDataStream />
+        ) : path === '/3d' ? (
+          <Advanced3DVisualization />
         ) : path === '/upgrade' ? (
           <UpgradePage />
         ) : (

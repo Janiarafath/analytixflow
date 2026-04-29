@@ -4,13 +4,13 @@ import { getStorage } from 'firebase/storage';
 import { getFirestore, doc, setDoc, updateDoc, increment, getDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDphmnO6ZILME4PenCdfZb6d7w5crKG9yQ",
-  authDomain: "prod1-d135f.firebaseapp.com",
-  projectId: "prod1-d135f",
-  storageBucket: "prod1-d135f.firebasestorage.app",
-  messagingSenderId: "245210614444",
-  appId: "1:245210614444:web:6fa052a3d3d8895f95ad09",
-  measurementId: "G-SJK1WYY586"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 export const ADMIN_EMAIL = "admin@fznodataiq.com";
@@ -38,33 +38,24 @@ export const initializeUserData = async (userId: string, email: string, displayN
   }
 };
 
-// Check if user can upload based on their plan and current upload count
+// Uploads are enabled for all authenticated users.
 export const canUserUpload = async (userId: string): Promise<boolean> => {
   try {
     const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
-    
+
     if (!userDoc.exists()) {
       // If user document doesn't exist, create it
       const user = auth.currentUser;
       if (user) {
         await initializeUserData(userId, user.email || '', user.displayName);
       }
-      return true; // New user can upload
-    }
-
-    const userData = userDoc.data();
-    
-    // Premium users can always upload
-    if (userData.plan === 'premium') {
       return true;
     }
-
-    // Free users are limited to 1 upload
-    return userData.uploadCount < 1;
+    return true;
   } catch (error) {
     console.error('Error checking upload permission:', error);
-    return false;
+    return true;
   }
 };
 
@@ -98,7 +89,7 @@ export const getUserUploadCount = async (userId: string): Promise<number> => {
   try {
     const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
-    
+
     if (!userDoc.exists()) {
       // Initialize user data if it doesn't exist
       const user = auth.currentUser;

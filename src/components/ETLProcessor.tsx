@@ -40,6 +40,7 @@ export const ETLProcessor: React.FC = () => {
   const [newColumnFormula, setNewColumnFormula] = useState("")
   const [newColumnData, setNewColumnData] = useState("")
   const [uploadCount, setUploadCount] = useState(0)
+  const [isAICleaning, setIsAICleaning] = useState(false)
 
   useEffect(() => {
     const fetchUploadCount = async () => {
@@ -78,12 +79,6 @@ export const ETLProcessor: React.FC = () => {
     }
 
     try {
-      const canUpload = await canUserUpload(user.uid)
-      if (!canUpload) {
-        toast.error("You've reached your upload limit. Please upgrade to premium for unlimited uploads.")
-        return
-      }
-
       setData(uploadedData)
       setColumns(Object.keys(uploadedData[0] || {}))
       calculateStats(uploadedData)
@@ -107,12 +102,6 @@ export const ETLProcessor: React.FC = () => {
 
       if (!user) {
         toast.error("Please sign in to upload files")
-        return
-      }
-
-      const canUpload = await canUserUpload(user.uid)
-      if (!canUpload) {
-        toast.error("You've reached your upload limit. Please upgrade to premium for unlimited uploads.")
         return
       }
 
@@ -281,6 +270,204 @@ export const ETLProcessor: React.FC = () => {
     toast.success("Transformations applied and data stored successfully")
   }
 
+  // Enhanced Groq AI data cleaning function - specifically for 0 values
+  const cleanZeroValuesWithAI = async () => {
+    if (!data.length) {
+      toast.error("Please upload data first")
+      return
+    }
+
+    setIsAICleaning(true)
+    try {
+      const cleanedData = [...data]
+      let totalReplaced = 0
+
+      // Analyze each column for 0 values specifically
+      for (const column of columns) {
+        const columnData = data.map(row => row[column])
+        const zeroValueIndices = columnData
+          .map((value, index) => ({ value, index }))
+          .filter(item => {
+            const val = item.value
+            return val === 0 || val === "0" || val === 0.0 || val === "0.0" || 
+                   (typeof val === 'string' && val.trim() === "0") ||
+                   (typeof val === 'string' && val.trim() === "0.0")
+          })
+
+        if (zeroValueIndices.length > 0) {
+          // Get non-zero values for pattern analysis
+          const nonZeroValues = columnData.filter(v => {
+            const val = v
+            return v !== null && v !== undefined && v !== "" && 
+                   val !== 0 && val !== "0" && val !== 0.0 && val !== "0.0" &&
+                   !(typeof val === 'string' && val.trim() === "0") &&
+                   !(typeof val === 'string' && val.trim() === "0.0")
+          })
+          const numericNonZeroValues = nonZeroValues.map(v => parseFloat(v)).filter(v => !isNaN(v))
+          
+          // Get sample data rows for context
+          const sampleRows = data.slice(0, 10).map(row => ({ ...row }))
+          
+          try {
+            // Use Groq AI to analyze patterns and suggest intelligent replacements
+            const response = await fetch('/api/ai/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                question: `I need to replace ${zeroValueIndices.length} zero values in column "${column}" with intelligent alternatives.
+                
+                Dataset context (first 10 rows):
+                ${JSON.stringify(sampleRows)}
+                
+                Non-zero values in this column: ${JSON.stringify(numericNonZeroValues.slice(0, 15))}
+                
+                Please analyze the data patterns and suggest ${zeroValueIndices.length} replacement values for the zeros. Consider:
+                1. Seasonal/trend patterns in the data
+                2. Average values from similar time periods
+                3. Logical relationships with other columns
+                4. Business context (if sales data, consider typical sales patterns)
+                5. Statistical patterns (mean, median, mode of non-zero values)
+                
+                For each zero, suggest a realistic value that fits the data pattern.
+                Return only the replacement values separated by commas, in order.`,
+                dataSample: sampleRows,
+                columns: columns,
+                dataProfile: []
+              }),
+            })
+
+            const json = await response.json()
+            if (!response.ok) {
+              throw new Error(json?.message || 'Failed to get AI suggestions')
+            }
+
+            // Parse and validate AI suggestions
+            const aiSuggestions = json.answer
+              .split(',')
+              .map((val: string) => val.trim())
+              .filter((val: string) => val !== "")
+              .slice(0, zeroValueIndices.length)
+
+            // Apply AI suggestions with validation
+            zeroValueIndices.forEach((item, index) => {
+              if (aiSuggestions[index]) {
+                const suggestion = aiSuggestions[index]
+                const numValue = parseFloat(suggestion)
+                
+                // Validate the suggestion makes sense
+                if (!isNaN(numValue) && numValue > 0) {
+                  cleanedData[item.index][column] = numValue
+                  totalReplaced++
+                } else if (numericNonZeroValues.length > 0) {
+                  // Fallback to median if AI suggestion is invalid
+                  const median = numericNonZeroValues.sort((a, b) => a - b)[Math.floor(numericNonZeroValues.length / 2)]
+                  cleanedData[item.index][column] = median
+                  totalReplaced++
+                }
+              } else if (numericNonZeroValues.length > 0) {
+                // Fallback to statistical value if no AI suggestion
+                const mean = numericNonZeroValues.reduce((a, b) => a + b, 0) / numericNonZeroValues.length
+                cleanedData[item.index][column] = mean
+                totalReplaced++
+              }
+            })
+
+            console.log(`Replaced ${zeroValueIndices.length} zeros in column "${column}" with AI-suggested values`)
+
+          } catch (error) {
+            console.error(`AI cleaning failed for column ${column}:`, error)
+            // Enhanced fallback: use weighted average based on neighboring values
+            zeroValueIndices.forEach(item => {
+              const neighbors = []
+              
+              // Get values from adjacent rows
+              if (item.index > 0) neighbors.push(parseFloat(columnData[item.index - 1]))
+              if (item.index < columnData.length - 1) neighbors.push(parseFloat(columnData[item.index + 1]))
+              
+              const validNeighbors = neighbors.filter(v => !isNaN(v) && v > 0)
+              
+              if (validNeighbors.length > 0) {
+                // Use average of neighboring non-zero values
+                cleanedData[item.index][column] = validNeighbors.reduce((a, b) => a + b, 0) / validNeighbors.length
+                totalReplaced++
+              } else if (numericNonZeroValues.length > 0) {
+                // Use median of all non-zero values
+                const median = numericNonZeroValues.sort((a, b) => a - b)[Math.floor(numericNonZeroValues.length / 2)]
+                cleanedData[item.index][column] = median
+                totalReplaced++
+              }
+            })
+          }
+        }
+      }
+
+      setData(cleanedData)
+      calculateStats(cleanedData)
+      localStorage.setItem("etl_processed_data", JSON.stringify(cleanedData))
+      toast.success(`AI replaced ${totalReplaced} zero values with intelligent alternatives`)
+    } catch (error) {
+      console.error("AI cleaning error:", error)
+      toast.error("Failed to clean zero values with AI")
+    } finally {
+      setIsAICleaning(false)
+    }
+  }
+
+  // Smart data cleaning function for categorical and numerical data
+  const smartCleanData = async () => {
+    if (!data.length) {
+      toast.error("Please upload data first")
+      return
+    }
+
+    setIsAICleaning(true)
+    try {
+      const cleanedData = [...data]
+      let categoricalReplaced = 0
+      let numericalReplaced = 0
+
+      // Analyze each column
+      for (const column of columns) {
+        const columnData = data.map(row => row[column])
+        
+        // Determine if column is numerical or categorical
+        const numericValues = columnData.map(v => parseFloat(v)).filter(v => !isNaN(v))
+        const isNumerical = numericValues.length > columnData.length * 0.5 // More than 50% numeric
+        
+        if (isNumerical) {
+          // Handle numerical data: replace blanks/nulls with 0
+          columnData.forEach((value, index) => {
+            if (value === null || value === undefined || value === "" || 
+                (typeof value === 'string' && value.trim() === "")) {
+              cleanedData[index][column] = 0
+              numericalReplaced++
+            }
+          })
+        } else {
+          // Handle categorical data: replace blanks/nulls with "Unknown"
+          columnData.forEach((value, index) => {
+            if (value === null || value === undefined || value === "" || 
+                (typeof value === 'string' && value.trim() === "")) {
+              cleanedData[index][column] = "Unknown"
+              categoricalReplaced++
+            }
+          })
+        }
+      }
+
+      setData(cleanedData)
+      calculateStats(cleanedData)
+      localStorage.setItem("etl_processed_data", JSON.stringify(cleanedData))
+      
+      toast.success(`Smart cleaning complete: ${numericalReplaced} numerical values → 0, ${categoricalReplaced} categorical values → "Unknown"`)
+    } catch (error) {
+      console.error("Smart cleaning error:", error)
+      toast.error("Failed to clean data")
+    } finally {
+      setIsAICleaning(false)
+    }
+  }
+
   const addColumn = () => {
     if (!newColumnName) {
       toast.error("Please enter a column name")
@@ -402,7 +589,7 @@ export const ETLProcessor: React.FC = () => {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
       "application/vnd.ms-excel": [".xls"],
     },
-    disabled: !user || !(user.plan === "premium" || uploadCount < 1),
+    disabled: !user,
   })
 
   return (
@@ -428,18 +615,11 @@ export const ETLProcessor: React.FC = () => {
               </div>
             </div>
           )}
-          {user && user.plan !== "premium" && uploadCount >= 1 && (
-            <div className="mt-4 p-4 bg-yellow-50 rounded-lg flex items-center gap-3">
-              <Lock className="h-5 w-5 text-yellow-600" />
+          {user && (
+            <div className="mt-4 p-4 bg-green-50 rounded-lg flex items-center gap-3">
+              <Lock className="h-5 w-5 text-green-600" />
               <div>
-                <p className="text-yellow-700">You've reached your upload limit.</p>
-                <a
-                  href="/upgrade"
-                  className="text-yellow-600 hover:text-yellow-800 font-medium inline-flex items-center gap-1 mt-1"
-                >
-                  Upgrade to premium for unlimited uploads
-                  <LinkIcon className="h-4 w-4" />
-                </a>
+                <p className="text-green-700">Unlimited uploads are enabled for your account.</p>
               </div>
             </div>
           )}
@@ -468,11 +648,11 @@ export const ETLProcessor: React.FC = () => {
               onChange={(e) => setApiUrl(e.target.value)}
               placeholder="Enter API URL"
               className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-              disabled={!user || !(user.plan === "premium" || uploadCount < 1)}
+              disabled={!user}
             />
             <button
               onClick={fetchFromApi}
-              disabled={loading || !user || !(user.plan === "premium" || uploadCount < 1)}
+              disabled={loading || !user}
               className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <LinkIcon className="h-5 w-5" />}
@@ -553,12 +733,51 @@ export const ETLProcessor: React.FC = () => {
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="text-lg font-semibold mb-4">Data Cleaning</h2>
               <div className="space-y-4">
-                <button
-                  onClick={removeDuplicates}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                >
-                  Remove Duplicate Rows
-                </button>
+                <div className="flex flex-wrap items-center gap-4">
+                  <button
+                    onClick={removeDuplicates}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove Duplicate Rows
+                  </button>
+                  
+                  <button
+                    onClick={cleanZeroValuesWithAI}
+                    disabled={isAICleaning || !data.length}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isAICleaning ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        AI Replacing Zeros...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-4 w-4" />
+                        Replace 0 Values with AI
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={smartCleanData}
+                    disabled={isAICleaning || !data.length}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isAICleaning ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Smart Cleaning...
+                      </>
+                    ) : (
+                      <>
+                        <Calculator className="h-4 w-4" />
+                        Smart Clean Data
+                      </>
+                    )}
+                  </button>
+                </div>
 
                 {columns.map((column) => (
                   <div key={column} className="flex items-center gap-4 bg-gray-50 p-4 rounded-lg">

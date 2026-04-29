@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Database, Settings, LogOut, LineChart, BarChart2, Users } from 'lucide-react';
+import { Database, Settings, LogOut, LineChart, BarChart2, Users, Activity, Brain, Zap, Globe, Target, TrendingUp, Sparkles } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserSettings } from './UserSettings';
 
@@ -65,7 +65,7 @@ export const Navbar = () => {
                     <LineChart className="h-4 w-4 mr-2" />
                     Data Analysis
                   </a>
-                  {user.isAdmin && (
+                                                      {user.isAdmin && (
                     <a
                       href="/admin"
                       className="text-white hover:bg-indigo-500 px-3 py-2 rounded-md text-sm font-medium flex items-center"
