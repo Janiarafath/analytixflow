@@ -61,85 +61,34 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', env: 'vercel' });
 });
 
-app.post('/api/ai/chat', async (req, res) => {
-  try {
-    const { question, dataSample, columns, dataProfile } = req.body || {};
-    if (typeof question !== 'string' || !question.trim()) {
-      return res.status(400).json({ status: 'error', message: 'Missing question.' });
-    }
-
-    const prompt = `Cols: ${JSON.stringify((columns || []).slice(0, 10))}
-Sample: ${JSON.stringify((dataSample || []).slice(0, 3))}
-Q: ${question}
-Analyze professionally. Give findings, analysis, recommendations. Use markdown.`;
-
-    let answer = '';
-
-    if (AI_PROVIDER === 'groq') {
-      if (!groqClient) {
-        return res.status(503).json({
-          status: 'error',
-          message: 'Groq client not initialized. Please check GROQ_API_KEY environment variable.',
-        });
-      }
-
-      try {
-        const chatCompletion = await groqClient.chat.completions.create({
-          messages: [
-            { role: 'system', content: 'You are a precise dataset-grounded assistant.' },
-            { role: 'user', content: prompt },
-          ],
-          model: AI_MODEL,
-          temperature: 0.2,
-        });
-        answer = chatCompletion.choices[0]?.message?.content?.trim() || '';
-      } catch (groqError) {
-        return res.status(502).json({
-          status: 'error',
-          message: `Groq API error: ${groqError.message || 'Unknown error'}`,
-          details: groqError.toString(),
-        });
-      }
-    } else {
-      if (!AI_API_KEY) {
-        return res.status(503).json({
-          status: 'error',
-          message: `AI is not configured on the server (missing key for provider: ${AI_PROVIDER}).`,
-        });
-      }
-
-      const referer = process.env.CLIENT_URL || 'http://localhost:5173';
-      const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${AI_API_KEY}` };
-      if (AI_PROVIDER === 'openrouter') {
-        headers['HTTP-Referer'] = referer;
-        headers['X-Title'] = 'AnalytixFlow';
-      }
-
-      const aiResp = await fetch(AI_BASE_URL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: AI_MODEL, temperature: 0.2,
-          messages: [
-            { role: 'system', content: 'You are a precise dataset-grounded assistant.' },
-            { role: 'user', content: prompt },
-          ],
-        }),
-      });
-
-      if (!aiResp.ok) {
-        const text = await aiResp.text();
-        return res.status(502).json({ status: 'error', message: `Upstream AI error (${AI_PROVIDER}): ${aiResp.status}`, details: text });
-      }
-
-      const json = await aiResp.json();
-      answer = json?.choices?.[0]?.message?.content?.trim() || '';
-    }
-
-    return res.json({ status: 'success', answer });
-  } catch (error) {
-    return res.status(500).json({ status: 'error', message: 'AI request failed.' });
+app.post('/api/ai/chat', (req, res) => {
+  const body = req.body || {};
+  const question = body.question;
+  if (typeof question !== 'string' || !question.trim()) {
+    return res.status(400).json({ status: 'error', message: 'Missing question.' });
   }
+  if (!groqClient) {
+    return res.status(503).json({
+      status: 'error',
+      message: 'Groq client not initialized. Please check GROQ_API_KEY environment variable.',
+    });
+  }
+  groqClient.chat.completions.create({
+    messages: [
+      { role: 'system', content: 'You are a precise dataset-grounded assistant.' },
+      { role: 'user', content: `Q: ${question}\nAnalyze professionally.` },
+    ],
+    model: AI_MODEL,
+    temperature: 0.2,
+  }).then(chatCompletion => {
+    const answer = chatCompletion.choices[0]?.message?.content?.trim() || '';
+    res.json({ status: 'success', answer });
+  }).catch(groqError => {
+    res.status(502).json({
+      status: 'error',
+      message: `Groq API error: ${groqError.message || 'Unknown error'}`,
+    });
+  });
 });
 
 app.post('/api/create-order', async (req, res) => {
