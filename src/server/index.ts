@@ -24,6 +24,11 @@ app.use(cors({
 
 app.use(express.json());
 
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', env: process.env.VERCEL ? 'vercel' : 'local' });
+});
+
 // Add security headers middleware
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -214,24 +219,32 @@ app.post('/api/verify-payment', (req, res) => {
   }
 });
 
-// Serve static frontend in production (for Vercel serverless)
-const distPath = path.resolve(process.cwd(), 'dist');
-app.use(express.static(distPath));
-
-// SPA fallback
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(distPath, 'index.html'));
-  }
+// Global error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ status: 'error', message: 'Internal server error' });
 });
 
-export default app;
+// Serve static frontend in production (for Vercel serverless)
+try {
+  const distPath = path.resolve(process.cwd(), 'dist');
+  app.use(express.static(distPath));
+  // SPA fallback
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(distPath, 'index.html'));
+    }
+  });
+} catch (e) {
+  console.error('Static file serving setup failed:', e);
+}
 
-// Only start the server when run directly (not in Vercel serverless)
-const isVercel = process.env.VERCEL === '1';
-if (!isVercel) {
+// Start server locally (skipped in Vercel serverless)
+if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
 }
+
+export default app;
