@@ -4,11 +4,11 @@ import path from 'path';
 const app = express();
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', message: 'Server is running' });
 });
 
 app.all('/api/*', (req, res) => {
-  res.json({ path: req.path, method: req.method });
+  res.json({ path: req.path, method: req.method, message: 'API route placeholder' });
 });
 
 const distPath = path.resolve(process.cwd(), 'dist');
