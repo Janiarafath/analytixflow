@@ -8,8 +8,14 @@ import Groq from 'groq-sdk';
 const app = express();
 
 // Configure CORS
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:4173',
+  process.env.CLIENT_URL,
+].filter(Boolean) as string[];
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:4173'], // Add your frontend URLs
+  origin: allowedOrigins,
   methods: ['GET', 'POST'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -115,7 +121,7 @@ Analyze professionally. Give findings, analysis, recommendations. Use markdown.`
           Authorization: `Bearer ${AI_API_KEY}`,
           ...(AI_PROVIDER === 'openrouter'
             ? {
-                'HTTP-Referer': 'http://localhost:5173',
+                'HTTP-Referer': process.env.CLIENT_URL || 'http://localhost:5173',
                 'X-Title': 'AnalytixFlow',
               }
             : {}),
@@ -207,9 +213,13 @@ app.post('/api/verify-payment', (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
 export default app;
+
+// Only start the server when run directly (not in Vercel serverless)
+const isVercel = process.env.VERCEL === '1';
+if (!isVercel) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
