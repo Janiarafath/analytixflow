@@ -57,6 +57,15 @@ const razorpay = new Razorpay({
   key_secret: RAZORPAY_KEY_SECRET,
 });
 
+app.get('/api/debug', (req, res) => {
+  res.json({
+    url: req.url,
+    originalUrl: req.originalUrl,
+    baseUrl: req.baseUrl,
+    path: req.path,
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', env: 'vercel' });
 });
