@@ -19,6 +19,7 @@ app.use((req, res, next) => {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
+      req.rawBody = body;
       try {
         req.body = body ? JSON.parse(body) : {};
       } catch (e) {
@@ -59,6 +60,8 @@ const AI_MODEL = process.env.AI_MODEL || (AI_PROVIDER === 'groq' ? 'llama-3.1-8b
 const razorpay = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', env: 'vercel' }));
+
+app.post('/api/echo', (req, res) => res.json({ body: req.body, rawBody: req.rawBody }));
 
 app.post('/api/ai/chat', (req, res) => {
   const { question, dataSample, columns } = req.body || {};
