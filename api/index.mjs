@@ -7,14 +7,8 @@ import Groq from 'groq-sdk';
 
 const app = express();
 
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:4173',
-  process.env.CLIENT_URL,
-].filter(Boolean);
-
 app.use(cors({
-  origin: allowedOrigins,
+  origin: true,
   methods: ['GET', 'POST'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -70,6 +64,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', env: 'vercel' });
 });
 
+app.all('/api/test', (req, res) => {
+  res.json({ method: req.method, body: req.body || null });
+});
+
 app.post('/api/ai/chat', async (req, res) => {
   try {
     const { question, dataSample, columns, dataProfile } = req.body || {};
@@ -103,7 +101,6 @@ Analyze professionally. Give findings, analysis, recommendations. Use markdown.`
         });
         answer = chatCompletion.choices[0]?.message?.content?.trim() || '';
       } catch (groqError) {
-        console.error('Groq API error:', groqError);
         return res.status(502).json({
           status: 'error',
           message: `Groq API error: ${groqError.message || 'Unknown error'}`,
