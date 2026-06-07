@@ -3,8 +3,8 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "functions": {
-    "api/index.ts": {
-      "runtime": "@vercel/node@latest"
+    "api/index.mjs": {
+      "runtime": "@vercel/node@4.0.0"
     }
   }
 }
