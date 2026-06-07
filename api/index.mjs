@@ -7,14 +7,13 @@ import Groq from 'groq-sdk';
 
 const app = express();
 
+app.use(express.json());
+
 app.use(cors({
-  origin: true,
+  origin: '*',
   methods: ['GET', 'POST'],
-  credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-
-app.use(express.json());
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -65,7 +64,13 @@ app.get('/api/health', (req, res) => {
 });
 
 app.all('/api/test', (req, res) => {
-  res.json({ method: req.method, body: req.body || null });
+  res.json({ method: req.method, body: req.body || null, ct: req.headers['content-type'] });
+});
+
+app.get('/api/rawbody', (req, res) => {
+  let data = '';
+  req.on('data', chunk => data += chunk);
+  req.on('end', () => res.json({ raw: data }));
 });
 
 app.post('/api/ai/chat', async (req, res) => {
